@@ -6,6 +6,9 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -17,13 +20,18 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.Toast
 
 class YouTubePlayerActivity : Activity() {
     private var player: WebView? = null
     private var playlist: List<YouTubeVideo> = emptyList()
     private var currentIndex = 0
+    private val handledPlaybackFailures = mutableSetOf<String>()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var isFinishingPlayback = false
     private lateinit var titleLabel: TextView
     private lateinit var channelLabel: TextView
+    private lateinit var nextSongLabel: TextView
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,6 +58,7 @@ class YouTubePlayerActivity : Activity() {
             finish()
             return
         }
+        val resumePositionSeconds = YouTubeLibrary.playbackPositionSeconds(this, firstVideo.videoId)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -72,7 +81,7 @@ class YouTubePlayerActivity : Activity() {
             addJavascriptInterface(PlayerBridge(), "TeSing")
             loadDataWithBaseURL(
                 "$appIdUrl/",
-                playerHtml(firstVideo.videoId, appIdUrl),
+                playerHtml(firstVideo.videoId, appIdUrl, resumePositionSeconds),
                 "text/html",
                 "UTF-8",
                 null
@@ -167,7 +176,11 @@ class YouTubePlayerActivity : Activity() {
         player?.evaluateJavascript(command, null)
     }
 
-    private fun playerHtml(videoId: String, appIdUrl: String): String = """
+    private fun playerHtml(
+        videoId: String,
+        appIdUrl: String,
+        resumePositionSeconds: Float
+    ): String = """
         <!doctype html>
         <html>
         <head>
@@ -182,14 +195,28 @@ class YouTubePlayerActivity : Activity() {
           <script src="https://www.youtube.com/iframe_api"></script>
           <script>
             var player;
+            var activeVideoId = '$videoId';
             function onYouTubeIframeAPIReady() {
               player = new YT.Player('player', {
                 width: '100%', height: '100%', videoId: '$videoId',
                 playerVars: { autoplay: 1, playsinline: 1, fs: 1, rel: 0, origin: '$appIdUrl' },
                 events: {
-                  onReady: function(e) { e.target.playVideo(); },
+                  onReady: function(e) {
+                    if ($resumePositionSeconds > 0) e.target.seekTo($resumePositionSeconds, true);
+                    e.target.playVideo();
+                    window.setInterval(reportPlaybackProgress, 2000);
+                  },
                   onStateChange: function(e) {
                     if (e.data === YT.PlayerState.ENDED) TeSing.onVideoEnded();
+                    if (e.data === YT.PlayerState.PAUSED) reportPlaybackProgress();
+                  },
+                  onError: function(e) {
+                    var failedVideoId = activeVideoId;
+                    if (player && player.getVideoData) {
+                      var videoData = player.getVideoData();
+                      if (videoData && videoData.video_id) failedVideoId = videoData.video_id;
+                    }
+                    TeSing.onVideoError(e.data, failedVideoId);
                   }
                 }
               });
@@ -201,7 +228,13 @@ class YouTubePlayerActivity : Activity() {
                 player.seekTo(Math.max(0, player.getCurrentTime() + delta), true);
               }
             }
+            function reportPlaybackProgress() {
+              if (player && player.getCurrentTime) {
+                TeSing.onPlaybackProgress(activeVideoId, player.getCurrentTime());
+              }
+            }
             function loadVideo(videoId) {
+              activeVideoId = videoId;
               if (player && player.loadVideoById) player.loadVideoById(videoId);
             }
           </script>
@@ -222,6 +255,7 @@ class YouTubePlayerActivity : Activity() {
             setTextColor(Color.WHITE)
             textSize = 17f
             maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
         }
         labels.addView(titleLabel)
         channelLabel = TextView(this).apply {
@@ -229,9 +263,18 @@ class YouTubePlayerActivity : Activity() {
             setTextColor(Color.rgb(157, 163, 176))
             textSize = 11f
             maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
         }
         labels.addView(channelLabel)
-        header.addView(labels, LinearLayout.LayoutParams(0, dp(56), 1f))
+        nextSongLabel = TextView(this).apply {
+            text = nextSongStatus()
+            setTextColor(Color.rgb(53, 220, 148))
+            textSize = 12f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }
+        labels.addView(nextSongLabel)
+        header.addView(labels, LinearLayout.LayoutParams(0, dp(72), 1f))
         header.addView(Button(this).apply {
             text = "YouTube 앱"
             setOnClickListener { currentVideo()?.let { openYouTubeApp(it.videoId) } }
@@ -247,15 +290,25 @@ class YouTubePlayerActivity : Activity() {
 
     private fun queueStatus(video: YouTubeVideo): String {
         val remaining = (playlist.size - currentIndex - 1).coerceAtLeast(0)
-        return if (remaining > 0) "${video.channel} · 다음 곡 ${remaining}개" else video.channel
+        val singer = video.requester.ifBlank { YouTubeLibrary.DEFAULT_SINGER }
+        val status = "$singer · ${video.channel}"
+        return if (remaining > 0) "$status · 다음 곡 ${remaining}개" else status
+    }
+
+    private fun nextSongStatus(): String {
+        val next = playlist.getOrNull(currentIndex + 1) ?: return "다음 곡 없음"
+        val singer = next.requester.ifBlank { YouTubeLibrary.DEFAULT_SINGER }
+        return "다음 곡 · $singer · ${next.title}"
     }
 
     private fun playNext() {
-        if (currentIndex + 1 >= playlist.size) return
+        completeCurrentVideo()
+        if (currentIndex + 1 >= playlist.size) return finishPlayback("마지막 곡의 재생이 끝났습니다.")
         currentIndex += 1
         val next = currentVideo() ?: return
         titleLabel.text = next.title
         channelLabel.text = queueStatus(next)
+        nextSongLabel.text = nextSongStatus()
         YouTubeLibrary.addHistory(this, next)
         runPlayerCommand("loadVideo('${next.videoId}')")
     }
@@ -265,6 +318,70 @@ class YouTubePlayerActivity : Activity() {
         fun onVideoEnded() {
             runOnUiThread { playNext() }
         }
+
+        @JavascriptInterface
+        fun onVideoError(errorCode: Int, failedVideoId: String) {
+            runOnUiThread { handlePlaybackFailure(errorCode, failedVideoId) }
+        }
+
+        @JavascriptInterface
+        fun onPlaybackProgress(videoId: String, seconds: Double) {
+            runOnUiThread {
+                if (isFinishingPlayback || currentVideo()?.videoId != videoId) return@runOnUiThread
+                YouTubeLibrary.savePlaybackPosition(
+                    this@YouTubePlayerActivity,
+                    videoId,
+                    seconds.toFloat()
+                )
+            }
+        }
+    }
+
+    private fun handlePlaybackFailure(errorCode: Int, failedVideoId: String) {
+        val failedVideo = currentVideo() ?: return
+
+        // 이전 영상에서 늦게 도착한 오류 콜백이 다음 곡까지 건너뛰지 않도록 막는다.
+        if (failedVideoId.isNotBlank() && failedVideoId != failedVideo.videoId) return
+        if (!handledPlaybackFailures.add(failedVideo.videoId)) return
+
+        val reason = when (errorCode) {
+            2 -> "잘못된 영상 주소"
+            5 -> "이 기기에서 재생할 수 없는 영상"
+            100 -> "삭제되었거나 비공개인 영상"
+            101, 150 -> "앱 내 재생이 차단된 영상"
+            153 -> "YouTube가 앱 정보를 확인하지 못한 영상"
+            else -> "재생할 수 없는 영상 (오류 $errorCode)"
+        }
+
+        if (currentIndex + 1 < playlist.size) {
+            Toast.makeText(this, "$reason · 다음 곡으로 넘어갑니다.", Toast.LENGTH_LONG).show()
+            playNext()
+        } else {
+            completeCurrentVideo()
+            finishPlayback("$reason · 예약된 다음 곡이 없습니다.")
+        }
+    }
+
+    private fun completeCurrentVideo() {
+        val completedVideoId = currentVideo()?.videoId ?: return
+        YouTubeLibrary.completePlayback(
+            this,
+            completedVideoId,
+            playlist.drop(currentIndex + 1)
+        )
+    }
+
+    private fun finishPlayback(message: String) {
+        if (isFinishingPlayback) return
+        isFinishingPlayback = true
+        runPlayerCommand("if (player && player.pauseVideo) player.pauseVideo()")
+        titleLabel.text = message
+        channelLabel.text = "잠시 후 재생 화면을 닫습니다."
+        nextSongLabel.text = ""
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        mainHandler.postDelayed({
+            if (!isFinishing && !isDestroyed) finish()
+        }, PLAYER_FINISH_DELAY_MS)
     }
 
     private fun openYouTubeApp(videoId: String) {
@@ -277,6 +394,7 @@ class YouTubePlayerActivity : Activity() {
     }
 
     override fun onPause() {
+        runPlayerCommand("reportPlaybackProgress()")
         player?.onPause()
         super.onPause()
     }
@@ -287,6 +405,7 @@ class YouTubePlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null)
         player?.stopLoading()
         player = null
         super.onDestroy()
@@ -299,5 +418,6 @@ class YouTubePlayerActivity : Activity() {
         const val EXTRA_VIDEO_TITLE = "youtube_video_title"
         const val EXTRA_VIDEO_CHANNEL = "youtube_video_channel"
         const val EXTRA_PLAYLIST = "youtube_playlist"
+        private const val PLAYER_FINISH_DELAY_MS = 2_000L
     }
 }

@@ -10,7 +10,7 @@ TeSing은 휴대폰 또는 태블릿에서 실행하고 차량 Bluetooth로 소�
 - Android 모듈: `tesla-karaoke`
 - 패키지/애플리케이션 ID: `com.seunghak.teslasing`
 - 표시 이름: `TeSing`
-- 현재 버전: `0.1.0` (`versionCode = 1`)
+- 현재 버전: `0.2.0` (`versionCode = 2`)
 - 최소 Android: API 26
 - 현재 `compileSdk`/`targetSdk`: API 34
 - 개발 언어/UI: Kotlin, Jetpack Compose
@@ -32,6 +32,13 @@ TeSing은 휴대폰 또는 태블릿에서 실행하고 차량 Bluetooth로 소�
 - 가로/세로 화면 지원
 - 즐겨찾기, 최근 재생, 최대 30곡 예약 목록 로컬 저장
 - 예약곡 연속 재생
+- 재생 오류 코드 감지 후 재생 불가 영상을 자동으로 건너뛰고 마지막 곡 종료 처리
+- 예약목록과 약 2초 단위 재생 위치를 로컬에 저장해 닫기·뒤로가기·강제 종료 후 복원
+- 예약자 사전 등록·삭제, 예약 시 예약자 선택, 사람별 공정 순서 자동 배치
+- 전체화면 플레이어 상단에 현재 예약자와 다음 예약곡 제목 표시
+- 기기 내부 재생 횟수를 집계하는 `내 애창곡`
+- TJ미디어 공식 응답을 이용한 최근 7일 `TJ 가요 TOP100`
+- TJ 차트 곡의 제목·가수로 재생 가능한 금영 YouTube 영상을 연결
 - YouTube 앱으로 열기 대체 동작
 - 주차/주행 상태 UI와 주행 중 조작 잠금
 
@@ -44,7 +51,9 @@ TeSing은 휴대폰 또는 태블릿에서 실행하고 차량 Bluetooth로 소�
 - `tesla-karaoke/src/main/java/com/seunghak/teslasing/YouTubeLibrary.kt`
   - 즐겨찾기, 최근 재생, 예약 목록 직렬화와 SharedPreferences 저장
 - `tesla-karaoke/src/main/java/com/seunghak/teslasing/YouTubePlayerActivity.kt`
-  - 전체화면 WebView/IFrame 플레이어와 예약곡 자동 재생
+  - 전체화면 WebView/IFrame 플레이어, 오류 자동 건너뛰기, 재생 위치 저장, 예약곡 자동 재생
+- `tesla-karaoke/src/main/java/com/seunghak/teslasing/TjChartClient.kt`
+  - TJ 공식 차트 응답에서 최근 7일·가요 TOP100 조회
 - `tesla-karaoke/src/main/AndroidManifest.xml`
   - 앱 이름, 액티비티, 인터넷 권한
 - `tesla-karaoke/build.gradle.kts`
@@ -62,7 +71,7 @@ TeSing은 휴대폰 또는 태블릿에서 실행하고 차량 Bluetooth로 소�
 tesla-karaoke/build/outputs/apk/debug/tesla-karaoke-debug.apk
 ```
 
-2026-08-14에 TeSing 이름 변경 후 `assembleDebug` 빌드 성공을 확인했다. Android Studio 실행 구성은 `tesla-karaoke` 모듈을 선택한다.
+2026-08-14에 버전 `0.2.0` 변경 사항을 포함한 `assembleDebug` 빌드 성공을 확인했다. Android Studio 실행 구성은 `tesla-karaoke` 모듈을 선택한다.
 
 ## 현재 제한 및 알려진 사항
 
@@ -74,6 +83,7 @@ tesla-karaoke/build/outputs/apk/debug/tesla-karaoke-debug.apk
 6. `YouTubePlayerActivity`의 시스템 UI 숨김 API는 deprecated 경고가 있으며 최신 WindowInsets API로 교체할 수 있다.
 7. Play 스토어용 출시 서명과 AAB 빌드는 아직 구성하지 않았다.
 8. 기존 GitHub Release `v0.1.0`의 APK는 TeSing 이름 변경 전 빌드다.
+9. TJ 가요 TOP100은 TJ미디어 홈페이지의 내부 차트 응답 형식에 의존하므로 사이트 개편 시 수정이 필요하며, 상용 배포 전 데이터 이용 조건 확인이 필요하다.
 
 ## Play 스토어 준비 상태
 
@@ -102,12 +112,13 @@ YouTube API 할당량과 정책은 변경될 수 있으므로 구현 시 최신 
 
 1. Android API 36으로 빌드 환경과 `targetSdk` 업그레이드 후 실제 기기 회귀 테스트
 2. 사용하지 않는 Demo/Synth/Vocal 코드와 `MediaSource.Demo` 분기 제거
-3. 공용 검색 백엔드 사용 여부와 할당량 운영 방안 확정
-4. 앱 아이콘, 스플래시, 온보딩, 오류 화면을 TeSing 브랜드로 마무리
-5. 개인정보처리방침/이용약관 작성 및 앱 설정 화면에 링크 추가
-6. Play App Signing용 릴리스 서명 구성 및 AAB 생성
-7. 가로/세로 회전, 전체화면 닫기/뒤로가기, WebView 재생, 예약 연속 재생 실제 기기 테스트
-8. `versionCode`/`versionName`을 올리고 새 GitHub Release와 Play 비공개 테스트 배포
+3. 충전 세션 타이머와 예약곡 총 재생시간 비교 기능 검토
+4. 동승자 휴대전화 QR 예약용 백엔드와 익명 세션 설계
+5. 공용 검색 백엔드 사용 여부와 할당량 운영 방안 확정
+6. 앱 아이콘, 스플래시, 온보딩, 오류 화면을 TeSing 브랜드로 마무리
+7. 개인정보처리방침/이용약관 작성 및 앱 설정 화면에 링크 추가
+8. Play App Signing용 릴리스 서명 구성 및 AAB 생성
+9. 가로/세로 회전, 전체화면 닫기/뒤로가기, WebView 재생, 예약 연속 재생 실제 기기 테스트
 
 ## 다른 컴퓨터에서 시작하기
 

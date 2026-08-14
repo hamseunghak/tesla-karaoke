@@ -10,7 +10,11 @@ data class YouTubeVideo(
     val videoId: String,
     val title: String,
     val channel: String,
-    val thumbnailUrl: String
+    val thumbnailUrl: String,
+    val requester: String = "",
+    val playCount: Int = 0,
+    val lookupQuery: String = "",
+    val chartRank: Int = 0
 )
 
 object YouTubeClient {
@@ -24,11 +28,20 @@ object YouTubeClient {
         } else {
             "$normalizedQuery 금영 노래방 KY karaoke"
         }
-        val encodedQuery = URLEncoder.encode(karaokeQuery, Charsets.UTF_8.name())
+        return requestVideos(apiKey, karaokeQuery, "relevance")
+    }
+
+    private fun requestVideos(
+        apiKey: String,
+        query: String,
+        order: String
+    ): List<YouTubeVideo> {
+        val encodedQuery = URLEncoder.encode(query, Charsets.UTF_8.name())
         val encodedKey = URLEncoder.encode(apiKey.trim(), Charsets.UTF_8.name())
         val endpoint = "https://www.googleapis.com/youtube/v3/search" +
             "?part=snippet&type=video&videoEmbeddable=true&safeSearch=moderate" +
-            "&regionCode=KR&relevanceLanguage=ko&maxResults=25&q=$encodedQuery&key=$encodedKey"
+            "&regionCode=KR&relevanceLanguage=ko&maxResults=25&order=$order" +
+            "&q=$encodedQuery&key=$encodedKey"
 
         val connection = URL(endpoint).openConnection() as HttpURLConnection
         return try {

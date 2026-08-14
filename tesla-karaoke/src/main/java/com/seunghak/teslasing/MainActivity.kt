@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -89,7 +90,7 @@ private val Muted = Color(0xFF9DA3B0)
 private val TeSingRed = Color(0xFFE82127)
 
 private enum class MediaSource { YouTube, Demo }
-private enum class YouTubeShelf { Search, Favorites, History, Queue }
+private enum class YouTubeShelf { Search, Popular, MySongs, Favorites, History, Queue }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -333,13 +334,31 @@ private fun YouTubePanel() {
     var showSettings by remember { mutableStateOf(apiKey.isBlank()) }
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<YouTubeVideo>>(emptyList()) }
-    var selected by remember { mutableStateOf<YouTubeVideo?>(null) }
+    val initialQueue = remember { YouTubeLibrary.queue(context) }
+    var selected by remember { mutableStateOf<YouTubeVideo?>(initialQueue.firstOrNull()) }
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("노래 제목과 가수 이름을 검색하세요.") }
     var shelf by remember { mutableStateOf(YouTubeShelf.Search) }
     var favorites by remember { mutableStateOf(YouTubeLibrary.favorites(context)) }
     var history by remember { mutableStateOf(YouTubeLibrary.history(context)) }
-    var queue by remember { mutableStateOf(YouTubeLibrary.queue(context)) }
+    var mostPlayed by remember { mutableStateOf(YouTubeLibrary.mostPlayed(context)) }
+    var popular by remember { mutableStateOf<List<YouTubeVideo>>(emptyList()) }
+    var popularLoaded by remember { mutableStateOf(false) }
+    var popularMessage by remember { mutableStateOf("최근 7일간 TJ에서 많이 불린 국내 가요 순위입니다.") }
+    var queue by remember { mutableStateOf(initialQueue) }
+    var singers by remember { mutableStateOf(YouTubeLibrary.singers(context)) }
+    var showAddSinger by remember { mutableStateOf(false) }
+    var addSingerReturnToSettings by remember { mutableStateOf(false) }
+    var draftSinger by remember { mutableStateOf("") }
+    var pendingQueueVideo by remember { mutableStateOf<YouTubeVideo?>(null) }
+    val playerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        queue = YouTubeLibrary.queue(context)
+        history = YouTubeLibrary.history(context)
+        mostPlayed = YouTubeLibrary.mostPlayed(context)
+        if (queue.isNotEmpty()) selected = queue.first()
+    }
 
     fun search() {
         if (loading) return
@@ -369,32 +388,105 @@ private fun YouTubePanel() {
         YouTubeLibrary.saveFavorites(context, favorites)
     }
 
-    fun toggleQueue(video: YouTubeVideo) {
-        queue = if (queue.any { it.videoId == video.videoId }) {
-            queue.filterNot { it.videoId == video.videoId }
-        } else {
-            queue + video
+    fun resolveChartVideo(video: YouTubeVideo, onResolved: (YouTubeVideo) -> Unit) {
+        if (video.lookupQuery.isBlank()) {
+            onResolved(video)
+            return
         }
+        if (apiKey.isBlank()) {
+            popularMessage = "금영 영상을 찾으려면 설정에서 YouTube API 키를 입력해주세요."
+            showSettings = true
+            return
+        }
+        if (loading) return
+        loading = true
+        popularMessage = "${video.chartRank}위 ${video.title}의 금영 영상을 찾는 중…"
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { YouTubeClient.search(apiKey, video.lookupQuery) }
+            }.onSuccess { matches ->
+                val resolved = matches.firstOrNull()
+                if (resolved == null) {
+                    popularMessage = "${video.title}의 재생 가능한 금영 영상을 찾지 못했습니다."
+                } else {
+                    onResolved(resolved)
+                    popularMessage = "TJ HOT100 · 금영 영상이 선택되었습니다."
+                }
+            }.onFailure {
+                popularMessage = it.message ?: "금영 영상을 찾지 못했습니다."
+            }
+            loading = false
+        }
+    }
+
+    fun selectVideo(video: YouTubeVideo) {
+        resolveChartVideo(video) { selected = it }
+    }
+
+    fun reserve(video: YouTubeVideo, singer: String) {
+        queue = YouTubeLibrary.fairQueue(queue + video.copy(requester = singer))
         YouTubeLibrary.saveQueue(context, queue)
+        pendingQueueVideo = null
+    }
+
+    fun requestQueueChange(video: YouTubeVideo) {
+        if (video.lookupQuery.isNotBlank()) {
+            resolveChartVideo(video) { pendingQueueVideo = it }
+            return
+        }
+        if (queue.any { it.videoId == video.videoId }) {
+            queue = queue.filterNot { it.videoId == video.videoId }
+            YouTubeLibrary.saveQueue(context, queue)
+        } else {
+            pendingQueueVideo = video
+        }
     }
 
     fun play(video: YouTubeVideo) {
         history = YouTubeLibrary.addHistory(context, video)
-        val playlist = (listOf(video) + queue.filterNot { it.videoId == video.videoId })
+        mostPlayed = YouTubeLibrary.mostPlayed(context)
+        val current = video.copy(requester = video.requester.ifBlank { YouTubeLibrary.DEFAULT_SINGER })
+        val playlist = (listOf(current) + queue.filterNot { it.videoId == video.videoId })
             .distinctBy { it.videoId }
-        queue = emptyList()
-        YouTubeLibrary.saveQueue(context, queue)
-        openFullscreenYouTube(context, playlist)
+        queue = playlist
+        YouTubeLibrary.startPlayback(context, playlist)
+        playerLauncher.launch(fullscreenYouTubeIntent(context, playlist))
+    }
+
+    fun selectShelf(target: YouTubeShelf) {
+        shelf = target
+        if (target == YouTubeShelf.MySongs) {
+            mostPlayed = YouTubeLibrary.mostPlayed(context)
+        }
+        if (target != YouTubeShelf.Popular || popularLoaded || loading) return
+        loading = true
+        popularMessage = "TJ 가요 TOP100을 불러오는 중…"
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { TjChartClient.koreanTop100() }
+            }.onSuccess {
+                popular = it
+                popularLoaded = true
+                popularMessage = "최근 7일 TJ 가요 TOP100 · 곡을 누르면 금영 영상을 찾습니다."
+            }.onFailure {
+                popularMessage = it.message ?: "TJ 가요 TOP100을 불러오지 못했습니다."
+            }
+            loading = false
+        }
     }
 
     val displayedVideos = when (shelf) {
         YouTubeShelf.Search -> results
+        YouTubeShelf.Popular -> popular
+        YouTubeShelf.MySongs -> mostPlayed
         YouTubeShelf.Favorites -> favorites
         YouTubeShelf.History -> history
         YouTubeShelf.Queue -> queue
     }
     val shelfMessage = when (shelf) {
         YouTubeShelf.Search -> message
+        YouTubeShelf.Popular -> popularMessage
+        YouTubeShelf.MySongs -> if (mostPlayed.isEmpty()) "아직 재생한 곡이 없습니다." else "내가 많이 부른 곡 ${mostPlayed.size}개"
         YouTubeShelf.Favorites -> if (favorites.isEmpty()) "즐겨찾기한 곡이 없습니다." else "즐겨찾기 ${favorites.size}곡"
         YouTubeShelf.History -> if (history.isEmpty()) "최근 재생한 곡이 없습니다." else "최근 재생 ${history.size}곡"
         YouTubeShelf.Queue -> if (queue.isEmpty()) "예약한 곡이 없습니다." else "예약 ${queue.size}곡 · 재생하면 순서대로 이어집니다."
@@ -417,10 +509,10 @@ private fun YouTubePanel() {
                 queuedIds = queue.mapTo(mutableSetOf()) { it.videoId },
                 onQueryChange = { query = it },
                 onSearch = { search() },
-                onSelect = { selected = it },
-                onShelfChange = { shelf = it },
+                onSelect = { selectVideo(it) },
+                onShelfChange = { selectShelf(it) },
                 onToggleFavorite = { toggleFavorite(it) },
-                onToggleQueue = { toggleQueue(it) },
+                onToggleQueue = { requestQueueChange(it) },
                 onOpenSettings = {
                     draftApiKey = apiKey
                     showSettings = true
@@ -439,7 +531,7 @@ private fun YouTubePanel() {
                     queued = selected?.let { video -> queue.any { it.videoId == video.videoId } } == true,
                     onPlay = { selected?.let { play(it) } },
                     onToggleFavorite = { selected?.let { toggleFavorite(it) } },
-                    onToggleQueue = { selected?.let { toggleQueue(it) } }
+                    onToggleQueue = { selected?.let { requestQueueChange(it) } }
                 )
             }
         } else {
@@ -454,7 +546,7 @@ private fun YouTubePanel() {
                     queued = selected?.let { video -> queue.any { it.videoId == video.videoId } } == true,
                     onPlay = { selected?.let { play(it) } },
                     onToggleFavorite = { selected?.let { toggleFavorite(it) } },
-                    onToggleQueue = { selected?.let { toggleQueue(it) } }
+                    onToggleQueue = { selected?.let { requestQueueChange(it) } }
                 )
             }
         }
@@ -485,6 +577,32 @@ private fun YouTubePanel() {
                             )
                         }
                     ) { Text("API 키 발급받기 ↗") }
+                    Text("예약자 관리", fontWeight = FontWeight.Bold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        items(singers, key = { "settings-singer-$it" }) { singer ->
+                            OutlinedButton(
+                                onClick = {
+                                    if (singer != YouTubeLibrary.DEFAULT_SINGER) {
+                                        singers = YouTubeLibrary.removeSinger(context, singer)
+                                    }
+                                }
+                            ) {
+                                Text(
+                                    if (singer == YouTubeLibrary.DEFAULT_SINGER) singer else "$singer ✕",
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                        item(key = "settings-add-singer") {
+                            TextButton(onClick = {
+                                draftSinger = ""
+                                addSingerReturnToSettings = true
+                                showSettings = false
+                                showAddSinger = true
+                            }) { Text("+ 예약자 추가", fontSize = 11.sp) }
+                        }
+                    }
+                    Text("이름의 ✕ 버튼을 누르면 등록에서 삭제됩니다.", color = Muted, fontSize = 10.sp)
                 }
             },
             confirmButton = {
@@ -500,18 +618,89 @@ private fun YouTubePanel() {
             }
         )
     }
+    if (showAddSinger) {
+        AlertDialog(
+            onDismissRequest = {
+                showAddSinger = false
+                if (addSingerReturnToSettings) showSettings = true
+            },
+            title = { Text("예약자 추가") },
+            text = {
+                OutlinedTextField(
+                    value = draftSinger,
+                    onValueChange = { draftSinger = it.take(10) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("이름 또는 별명") },
+                    placeholder = { Text("예: 민수") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        if (draftSinger.isNotBlank()) {
+                            singers = YouTubeLibrary.addSinger(context, draftSinger)
+                            showAddSinger = false
+                            if (addSingerReturnToSettings) showSettings = true
+                        }
+                    })
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = draftSinger.isNotBlank(),
+                    onClick = {
+                        singers = YouTubeLibrary.addSinger(context, draftSinger)
+                        showAddSinger = false
+                        if (addSingerReturnToSettings) showSettings = true
+                    }
+                ) { Text("추가") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showAddSinger = false
+                    if (addSingerReturnToSettings) showSettings = true
+                }) { Text("취소") }
+            }
+        )
+    }
+    val queueVideo = pendingQueueVideo
+    if (queueVideo != null && !showAddSinger) {
+        AlertDialog(
+            onDismissRequest = { pendingQueueVideo = null },
+            title = { Text("누가 예약하나요?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text(queueVideo.title, color = Muted, fontSize = 12.sp, maxLines = 2)
+                    singers.forEach { singer ->
+                        OutlinedButton(
+                            onClick = { reserve(queueVideo, singer) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text(singer) }
+                    }
+                    TextButton(
+                        onClick = {
+                            draftSinger = ""
+                            addSingerReturnToSettings = false
+                            showAddSinger = true
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("+ 새 예약자 등록") }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { pendingQueueVideo = null }) { Text("취소") }
+            }
+        )
+    }
 }
 
-private fun openFullscreenYouTube(context: Context, playlist: List<YouTubeVideo>) {
-    val video = playlist.firstOrNull() ?: return
-    context.startActivity(
-        Intent(context, YouTubePlayerActivity::class.java).apply {
-            putExtra(YouTubePlayerActivity.EXTRA_VIDEO_ID, video.videoId)
-            putExtra(YouTubePlayerActivity.EXTRA_VIDEO_TITLE, video.title)
-            putExtra(YouTubePlayerActivity.EXTRA_VIDEO_CHANNEL, video.channel)
-            putExtra(YouTubePlayerActivity.EXTRA_PLAYLIST, YouTubeLibrary.encode(playlist))
-        }
-    )
+private fun fullscreenYouTubeIntent(context: Context, playlist: List<YouTubeVideo>): Intent {
+    val video = requireNotNull(playlist.firstOrNull())
+    return Intent(context, YouTubePlayerActivity::class.java).apply {
+        putExtra(YouTubePlayerActivity.EXTRA_VIDEO_ID, video.videoId)
+        putExtra(YouTubePlayerActivity.EXTRA_VIDEO_TITLE, video.title)
+        putExtra(YouTubePlayerActivity.EXTRA_VIDEO_CHANNEL, video.channel)
+        putExtra(YouTubePlayerActivity.EXTRA_PLAYLIST, YouTubeLibrary.encode(playlist))
+    }
 }
 
 @Composable
@@ -578,11 +767,25 @@ private fun YouTubeSearchPane(
             Text(message, color = Muted, fontSize = 11.sp, maxLines = 2)
         }
         item(key = "library-tabs") {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            LazyRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                item {
                 ShelfTab("검색", shelf == YouTubeShelf.Search) { onShelfChange(YouTubeShelf.Search) }
+                }
+                item {
+                ShelfTab("TJ 가요 TOP100", shelf == YouTubeShelf.Popular) { onShelfChange(YouTubeShelf.Popular) }
+                }
+                item {
+                ShelfTab("내 애창곡", shelf == YouTubeShelf.MySongs) { onShelfChange(YouTubeShelf.MySongs) }
+                }
+                item {
                 ShelfTab("♥ 즐겨찾기", shelf == YouTubeShelf.Favorites) { onShelfChange(YouTubeShelf.Favorites) }
+                }
+                item {
                 ShelfTab("최근", shelf == YouTubeShelf.History) { onShelfChange(YouTubeShelf.History) }
+                }
+                item {
                 ShelfTab("예약", shelf == YouTubeShelf.Queue) { onShelfChange(YouTubeShelf.Queue) }
+                }
             }
         }
         items(videos, key = { "${shelf.name}-${it.videoId}" }) { video ->
@@ -632,18 +835,37 @@ private fun YouTubeResultRow(
         Box(
             modifier = Modifier.size(width = 64.dp, height = 42.dp).clip(RoundedCornerShape(9.dp)).background(TeSingRed),
             contentAlignment = Alignment.Center
-        ) { Text("▶", fontSize = 18.sp, color = Color.White) }
+        ) {
+            Text(
+                if (video.chartRank > 0) "${video.chartRank}위" else "▶",
+                fontSize = if (video.chartRank > 0) 14.sp else 18.sp,
+                color = Color.White,
+                fontWeight = FontWeight.Bold
+            )
+        }
         Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
             Text(video.title, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 13.sp)
             Text(video.channel, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (video.requester.isNotBlank()) {
+                Text("예약자 · ${video.requester}", color = Color(0xFF35DC94), fontSize = 10.sp)
+            }
+            if (video.playCount > 0) {
+                Text("${video.playCount}회 재생", color = TeSingRed, fontSize = 10.sp)
+            }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            TextButton(onClick = onToggleFavorite, modifier = Modifier.height(34.dp)) {
-                Text(if (favorite) "♥" else "♡", color = if (favorite) TeSingRed else Muted, fontSize = 18.sp)
-            }
-            TextButton(onClick = onToggleQueue, modifier = Modifier.height(32.dp)) {
-                Text(if (queued) "예약됨" else "+예약", color = if (queued) Color(0xFF35DC94) else Muted, fontSize = 9.sp)
+            if (video.lookupQuery.isNotBlank()) {
+                TextButton(onClick = onClick) {
+                    Text("금영 찾기", color = Color(0xFF35DC94), fontSize = 10.sp)
+                }
+            } else {
+                TextButton(onClick = onToggleFavorite, modifier = Modifier.height(34.dp)) {
+                    Text(if (favorite) "♥" else "♡", color = if (favorite) TeSingRed else Muted, fontSize = 18.sp)
+                }
+                TextButton(onClick = onToggleQueue, modifier = Modifier.height(32.dp)) {
+                    Text(if (queued) "예약됨" else "+예약", color = if (queued) Color(0xFF35DC94) else Muted, fontSize = 9.sp)
+                }
             }
         }
     }
