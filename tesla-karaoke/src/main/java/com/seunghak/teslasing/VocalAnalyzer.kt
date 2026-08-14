@@ -19,7 +19,7 @@ class VocalAnalyzer {
     fun start(targetNote: () -> Int, onReading: (VocalReading) -> Unit) {
         stop()
         listening = true
-        thread(name = "tesla-sing-vocal") {
+        thread(name = "tesing-vocal") {
             val sampleRate = 16_000
             val size = AudioRecord.getMinBufferSize(
                 sampleRate,

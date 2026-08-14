@@ -17,7 +17,7 @@ val demoSongs = listOf(
     Song(
         id = "electric-night",
         title = "Electric Night",
-        artist = "Tesla Sing Original",
+        artist = "TeSing Original",
         durationMs = 72_000,
         bpm = 108,
         color = 0xFFE82127,
@@ -42,7 +42,7 @@ val demoSongs = listOf(
     Song(
         id = "seoul-drive",
         title = "서울 드라이브",
-        artist = "Tesla Sing Original",
+        artist = "TeSing Original",
         durationMs = 64_000,
         bpm = 96,
         color = 0xFF7C5CFC,
@@ -65,7 +65,7 @@ val demoSongs = listOf(
     Song(
         id = "charging-day",
         title = "충전하는 날",
-        artist = "Tesla Sing Original",
+        artist = "TeSing Original",
         durationMs = 58_000,
         bpm = 118,
         color = 0xFF19C37D,

@@ -86,7 +86,7 @@ import kotlin.math.roundToInt
 private val AppBackground = Color(0xFF090B10)
 private val Panel = Color(0xFF151820)
 private val Muted = Color(0xFF9DA3B0)
-private val TeslaRed = Color(0xFFE82127)
+private val TeSingRed = Color(0xFFE82127)
 
 private enum class MediaSource { YouTube, Demo }
 private enum class YouTubeShelf { Search, Favorites, History, Queue }
@@ -98,19 +98,19 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
-                    primary = TeslaRed,
+                    primary = TeSingRed,
                     background = AppBackground,
                     surface = Panel,
                     onBackground = Color.White,
                     onSurface = Color.White
                 )
-            ) { TeslaSingApp() }
+            ) { TeSingApp() }
         }
     }
 }
 
 @Composable
-private fun TeslaSingApp() {
+private fun TeSingApp() {
     val context = LocalContext.current
     val synth = remember { SynthEngine() }
     val analyzer = remember { VocalAnalyzer() }
@@ -277,15 +277,15 @@ private fun TopBar(
         Column(modifier = Modifier.fillMaxWidth().height(if (compact) 108.dp else 64.dp).padding(horizontal = if (compact) 14.dp else 22.dp)) {
             Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
         Box(
-            modifier = Modifier.size(if (compact) 30.dp else 34.dp).clip(CircleShape).background(TeslaRed),
+            modifier = Modifier.size(if (compact) 30.dp else 34.dp).clip(CircleShape).background(TeSingRed),
             contentAlignment = Alignment.Center
         ) { Text("♪", fontSize = 20.sp, fontWeight = FontWeight.Black) }
         Spacer(Modifier.width(11.dp))
-        Text("TESLA SING", fontWeight = FontWeight.Black, letterSpacing = 2.sp, fontSize = if (compact) 16.sp else 18.sp)
+        Text("TeSing", fontWeight = FontWeight.Black, letterSpacing = 2.sp, fontSize = if (compact) 16.sp else 18.sp)
         if (!compact) Text("  companion", color = Muted, fontSize = 13.sp)
         Spacer(Modifier.weight(1f))
         if (!compact) {
-            Text("오디오는 테슬라 Bluetooth로 연결", color = Muted, fontSize = 12.sp)
+            Text("오디오는 차량 Bluetooth로 연결", color = Muted, fontSize = 12.sp)
             Spacer(Modifier.width(18.dp))
         }
         Row(
@@ -293,7 +293,7 @@ private fun TopBar(
                 .clickable { onParkedChange(!parked) }.padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(Modifier.size(8.dp).clip(CircleShape).background(if (parked) Color(0xFF35DC94) else TeslaRed))
+            Box(Modifier.size(8.dp).clip(CircleShape).background(if (parked) Color(0xFF35DC94) else TeSingRed))
             Spacer(Modifier.width(8.dp))
             Text(if (parked) "P  주차됨" else "D  주행 중", fontWeight = FontWeight.Bold, fontSize = 13.sp)
         }
@@ -302,7 +302,7 @@ private fun TopBar(
                 Row(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("YouTube 노래방", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     Spacer(Modifier.weight(1f))
-                    Text("Tesla Bluetooth 출력", color = Muted, fontSize = 10.sp)
+                    Text("차량 Bluetooth 출력", color = Muted, fontSize = 10.sp)
                 }
             }
         }
@@ -604,7 +604,7 @@ private fun ShelfTab(label: String, selected: Boolean, onClick: () -> Unit) {
     Text(
         text = label,
         modifier = Modifier.clip(RoundedCornerShape(12.dp))
-            .background(if (selected) TeslaRed.copy(alpha = .22f) else Panel)
+            .background(if (selected) TeSingRed.copy(alpha = .22f) else Panel)
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 7.dp),
         color = if (selected) Color.White else Muted,
@@ -625,12 +625,12 @@ private fun YouTubeResultRow(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
-            .background(if (selected) TeslaRed.copy(alpha = .2f) else Panel)
+            .background(if (selected) TeSingRed.copy(alpha = .2f) else Panel)
             .clickable(onClick = onClick).padding(11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier.size(width = 64.dp, height = 42.dp).clip(RoundedCornerShape(9.dp)).background(TeslaRed),
+            modifier = Modifier.size(width = 64.dp, height = 42.dp).clip(RoundedCornerShape(9.dp)).background(TeSingRed),
             contentAlignment = Alignment.Center
         ) { Text("▶", fontSize = 18.sp, color = Color.White) }
         Spacer(Modifier.width(11.dp))
@@ -640,7 +640,7 @@ private fun YouTubeResultRow(
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             TextButton(onClick = onToggleFavorite, modifier = Modifier.height(34.dp)) {
-                Text(if (favorite) "♥" else "♡", color = if (favorite) TeslaRed else Muted, fontSize = 18.sp)
+                Text(if (favorite) "♥" else "♡", color = if (favorite) TeSingRed else Muted, fontSize = 18.sp)
             }
             TextButton(onClick = onToggleQueue, modifier = Modifier.height(32.dp)) {
                 Text(if (queued) "예약됨" else "+예약", color = if (queued) Color(0xFF35DC94) else Muted, fontSize = 9.sp)
@@ -664,7 +664,7 @@ private fun YouTubePlayerPanel(
     if (video == null) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("▶", color = TeslaRed, fontSize = 54.sp)
+                Text("▶", color = TeSingRed, fontSize = 54.sp)
                 Spacer(Modifier.height(12.dp))
                 Text("재생할 영상을 선택하세요", fontSize = 26.sp, fontWeight = FontWeight.Bold)
                 Text("노래방·반주 영상을 선택하면 YouTube 앱에서 재생됩니다.", color = Muted, fontSize = 13.sp)
@@ -691,7 +691,7 @@ private fun YouTubePlayerPanel(
                 contentScale = ContentScale.Fit
             )
             Box(
-                modifier = Modifier.size(68.dp).clip(CircleShape).background(TeslaRed.copy(alpha = .94f)),
+                modifier = Modifier.size(68.dp).clip(CircleShape).background(TeSingRed.copy(alpha = .94f)),
                 contentAlignment = Alignment.Center
             ) { Text("▶", color = Color.White, fontSize = 28.sp, modifier = Modifier.padding(start = 4.dp)) }
         }
@@ -818,7 +818,7 @@ private fun PlayerPanel(
     if (song == null) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("♪", color = TeslaRed, fontSize = 58.sp)
+                Text("♪", color = TeSingRed, fontSize = 58.sp)
                 Text("부를 노래를 골라주세요", fontSize = 28.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
                 Text("왼쪽 목록에서 노래를 선택하면 가사가 표시됩니다.", color = Muted)

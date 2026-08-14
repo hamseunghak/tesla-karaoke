@@ -1,6 +1,6 @@
-# Tesla Karaoke
+# TeSing
 
-테슬라 Bluetooth 오디오와 함께 사용하는 Android용 YouTube 노래방 앱입니다. 휴대폰이나 태블릿에서 실행하고 차량 Bluetooth로 소리를 출력하는 구성을 전제로 합니다.
+차량 Bluetooth 오디오와 함께 사용하는 Android용 YouTube 노래방 앱입니다. 휴대폰이나 태블릿에서 실행하고 차량 Bluetooth로 소리를 출력하는 구성을 전제로 합니다.
 
 ## 주요 기능
 

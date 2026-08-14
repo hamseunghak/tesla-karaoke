@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "TeslaKaraoke"
+rootProject.name = "TeSing"
 include(":tesla-karaoke")

@@ -17,7 +17,7 @@ class SynthEngine {
     fun play(song: Song, keyShift: Int, tempo: Float, fromMs: Long = 0) {
         stop()
         playing = true
-        worker = thread(name = "tesla-sing-synth") {
+        worker = thread(name = "tesing-synth") {
             val sampleRate = 22_050
             val minBuffer = AudioTrack.getMinBufferSize(
                 sampleRate,

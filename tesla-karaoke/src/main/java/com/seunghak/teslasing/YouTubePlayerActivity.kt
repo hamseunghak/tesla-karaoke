@@ -69,7 +69,7 @@ class YouTubePlayerActivity : Activity() {
             settings.loadWithOverviewMode = true
             webChromeClient = WebChromeClient()
             webViewClient = WebViewClient()
-            addJavascriptInterface(PlayerBridge(), "TeslaSing")
+            addJavascriptInterface(PlayerBridge(), "TeSing")
             loadDataWithBaseURL(
                 "$appIdUrl/",
                 playerHtml(firstVideo.videoId, appIdUrl),
@@ -189,7 +189,7 @@ class YouTubePlayerActivity : Activity() {
                 events: {
                   onReady: function(e) { e.target.playVideo(); },
                   onStateChange: function(e) {
-                    if (e.data === YT.PlayerState.ENDED) TeslaSing.onVideoEnded();
+                    if (e.data === YT.PlayerState.ENDED) TeSing.onVideoEnded();
                   }
                 }
               });
